@@ -10,9 +10,8 @@ import java.util.Arrays;
 import java.util.List;
 
 
-/*now login/ and logout/ endpoints are implicitly defined
-* username: user
-* password: read UUID from the console
+/*
+* With basic auth, we need to provide username and password in header (encoded as Base64) with every request.
 * */
 @RestController
 @RequestMapping("/api/v1/students/")
