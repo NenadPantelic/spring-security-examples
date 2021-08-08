@@ -1,5 +1,8 @@
 package com.example.security.demo.model;
 
+import lombok.ToString;
+
+@ToString
 public class Student {
     private final Integer id;
     private final String name;

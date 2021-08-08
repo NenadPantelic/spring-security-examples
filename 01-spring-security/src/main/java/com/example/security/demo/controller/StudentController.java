@@ -16,12 +16,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/students/")
 public class StudentController {
-    private static final List<Student> students = Arrays.asList(new Student(1, "James Bond"),
+    private static final List<Student> STUDENTS = Arrays.asList(new Student(1, "James Bond"),
             new Student(2, "Maria Jones"), new Student(3, "Anna Smith"));
 
     @GetMapping("{studentId}")
     public Student getStudent(@PathVariable("studentId") Integer studentId) {
-        return students
+        return STUDENTS
                 .stream()
                 .filter(student -> student.getId().equals(studentId))
                 .findFirst()
