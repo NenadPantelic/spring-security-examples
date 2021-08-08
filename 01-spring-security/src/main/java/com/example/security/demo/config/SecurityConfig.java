@@ -1,10 +1,8 @@
 package com.example.security.demo.config;
 
-import com.example.security.demo.security.UserPermission;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -14,9 +12,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 import static com.example.security.demo.security.UserRole.*;
-import static com.example.security.demo.security.UserPermission.*;
 
 @Configuration
 @EnableWebSecurity
@@ -30,25 +28,27 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         this.passwordEncoder = passwordEncoder;
     }
 
-    // drawback of the basic auth -> there is no logout
+    // 1. when the clients signs in, it receives CSRF (Cross-Site Request Forgery) token, which prevents
+    // csrf attacks.
+    // 2. When the user submits the form, the client sends CSRF token in the request.
+    // 3.the server validates the token.
+    // NOTE: GET requests work with CSRF, but POST/PUT/DELETE are protected
+
+    /*WHEN TO USE CSRF PROTECTION?
+     * By Spring docs:
+     * for any request being used by normal users
+     * if we have service that is used only by non-signed-in users, then we don't need it*/
+    // X-XSRF-TOKEN (got from GET request)
     @Override
     protected void configure(HttpSecurity http) throws Exception {
-        // every request must be authenticated => user must provide username and password
-        // Header:
-        // Authorization: Basic <Base64 encoded string>
-        // Security provides default user stored in-memory:
-        // username: user
-        // password: random UUID
         http
-                .csrf().disable() // disable csrf
+                //.csrf().disable() // disable csrf
+                // disable accessing to cookies from some client-side scripts
+                .csrf().csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .and()
                 .authorizeRequests()
-                // these paths do not require authentication
                 .antMatchers("/", "/index", "/css/*", "/js/*").permitAll()
                 .antMatchers("/api/**").hasRole(STUDENT.name()) // allow only students to access student resources
-//                .antMatchers(HttpMethod.POST,"/management/api/**").hasAuthority(STUDENT_WRITE.getPermission())
-//                .antMatchers(HttpMethod.PUT,"/management/api/**").hasAuthority(STUDENT_WRITE.getPermission())
-//                .antMatchers(HttpMethod.DELETE,"/management/api/**").hasAuthority(STUDENT_WRITE.getPermission())
-//                .antMatchers(HttpMethod.GET,"/management/api/**").hasAnyRole(ADMIN.name(), ADMIN_TRAINEE.name()) // both can read
                 .anyRequest() //-> any path
                 .authenticated()
                 .and()
@@ -63,30 +63,19 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         UserDetails studentUser = User.builder()
                 .username("annasmith")
                 .password(passwordEncoder.encode("password")) // password must be encoded
-                //.roles("STUDENT") //  internally stored as ROLE_STUDENT
-//                .roles(STUDENT.name()) //  internally stored as ROLE_STUDENT
                 .authorities(STUDENT.getGrantedAuthorities())
                 .build();
 
         UserDetails adminUser = User.builder()
                 .username("linda")
                 .password(passwordEncoder.encode("password123")) // password must be encoded
-                //.roles("ADMIN") //  internally stored as ROLE_ADMIN
-//                .roles(ADMIN.name()) //  internally stored as ROLE_ADMIN
                 .authorities(ADMIN.getGrantedAuthorities())
                 .build();
         UserDetails adminTraineeUser = User.builder()
                 .username("tom")
                 .password(passwordEncoder.encode("password123")) // password must be encoded
-                //.roles("ADMIN") //  internally stored as ROLE_ADMIN
-//                .roles(ADMIN_TRAINEE.name()) //  internally stored as ROLE_ADMIN
                 .authorities(ADMIN_TRAINEE.getGrantedAuthorities())
                 .build();
         return new InMemoryUserDetailsManager(studentUser, adminUser, adminTraineeUser);
     }
-    // roles -> container of authorities/permissions
-    // e.g. -> role = admin
-    // student:read, student:write, course:read, course:write
-    // e.g. -> role = student
-    // student:read, student:write, course:read
 }
