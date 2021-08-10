@@ -1,17 +1,16 @@
 package com.example.security.demo.config;
 
+import com.example.security.demo.service.impl.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 import java.util.concurrent.TimeUnit;
@@ -62,10 +61,12 @@ import static com.example.security.demo.security.UserRole.*;
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     private final PasswordEncoder passwordEncoder;
+    private final UserService userService;
 
     @Autowired
-    public SecurityConfig(PasswordEncoder passwordEncoder) {
+    public SecurityConfig(PasswordEncoder passwordEncoder, UserService userService) {
         this.passwordEncoder = passwordEncoder;
+        this.userService = userService;
     }
 
     @Override
@@ -78,8 +79,6 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .anyRequest() //-> any path
                 .authenticated()
                 .and()
-//                .httpBasic(); // -> for basic auth
-                // session id is stored in-memory, but we can use e.g. Postgres or Redis
                 .formLogin() //  -> for form-based auth
                     .loginPage("/login")
                     .permitAll() // custom login page
@@ -88,11 +87,6 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                     .passwordParameter("password") // default value => password, can be customized
                 .and()
                 .rememberMe() // defaults to 2 weeks; remember-me cookie, also stored in the database
-                // (by default stored in-memory)
-                // remember-me cookie:
-                // - username
-                // - expiration time
-                // - MD5 of these two values
                     .tokenValiditySeconds((int) TimeUnit.DAYS.toSeconds(21)) // set expiration time frame
                     .key("somethingverysecure") // custom key used to hash with MD5
                     .rememberMeParameter("remember-me") // default value => remember-me, can be customized
@@ -105,33 +99,21 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                     .invalidateHttpSession(true) // invalidate session
                     .deleteCookies("JSESSIONID", "remember-me") // delete session cookies
                     .logoutSuccessUrl("/login");
-        // if CSRF protection is enabled, logout request must be POST
-        // otherwise, any HTTP method is allowed
+
 
 
     }
 
     @Override
-    @Bean
-    // to retrieve users from the db
-    // defining custom user stored in-memory
-    protected UserDetailsService userDetailsService() {
-        UserDetails studentUser = User.builder()
-                .username("annasmith")
-                .password(passwordEncoder.encode("password")) // password must be encoded
-                .authorities(STUDENT.getGrantedAuthorities())
-                .build();
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.authenticationProvider(daoAuthenticationProvider());
+    }
 
-        UserDetails adminUser = User.builder()
-                .username("linda")
-                .password(passwordEncoder.encode("password123")) // password must be encoded
-                .authorities(ADMIN.getGrantedAuthorities())
-                .build();
-        UserDetails adminTraineeUser = User.builder()
-                .username("tom")
-                .password(passwordEncoder.encode("password123")) // password must be encoded
-                .authorities(ADMIN_TRAINEE.getGrantedAuthorities())
-                .build();
-        return new InMemoryUserDetailsManager(studentUser, adminUser, adminTraineeUser);
+    @Bean
+    public DaoAuthenticationProvider daoAuthenticationProvider(){
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setPasswordEncoder(passwordEncoder);
+        provider.setUserDetailsService(userService);
+        return provider;
     }
 }
