@@ -1,5 +1,8 @@
 package com.example.security.demo.config;
 
+import com.example.security.demo.security.jwt.JwtConfig;
+import com.example.security.demo.security.jwt.JwtTokenVerifier;
+import com.example.security.demo.security.jwt.JwtUsernameAndPasswordAuthenticationFilter;
 import com.example.security.demo.service.impl.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -10,51 +13,40 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
-import java.util.concurrent.TimeUnit;
+import javax.crypto.SecretKey;
 
 import static com.example.security.demo.security.UserRole.*;
 
 
 /*
- * Basic auth:
- * - (in header) Authorization: Basic <Base64 encoded -> username:password>
- * - HTTPS recommended
- * - Simple and fast
- * - Can't logout
- *
- * Client            Server
- *  GET request ----->
- * <-----Unauthorized---
- *
- * ---GET request | Base64 username:password--
- * <-------200 OK----------
- *
- *
- * Form-based auth:
- * - Username and password
- * - Standard in most websites
- * - Forms (full control)
- * - Can logout
- * - HTTPS recommended
- *
- * Client            Server
- * ----POST username password----
- *                               |
- *                               |
- *     validates credentials<-----
- * <-------OK--------------------
- * <-------COOKIE SESSIONID------
- *
- * Any request with SESSIONID----->
- *                                |
- *      validates SESSIONID<-------
- * <--------OK---------------------
- *
- * -SESSIONID expires after 30 mins of inactivity, can be prolonged with remember me
- * */
+* JWT (JSON Web Token)
+* + Fast
+* + Stateless
+* + Used across many services
+*
+* - Compromised secret key
+* - No visibility to logged-in users
+* - Token can be stolen
+*
+*
+* Client                  Server
+* -----credentials---> validates credentials and
+*                       Creates and signs token
+*                       |
+*                       |
+*      <-----token------
+* sends token for each req->
+*
+*
+* JWT:
+* 1. header
+* 2. body
+* 3. signature
+*
+* */
 @Configuration
 @EnableWebSecurity
 @EnableGlobalMethodSecurity(prePostEnabled = true) // for using annotation-based authorization
@@ -62,46 +54,32 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     private final PasswordEncoder passwordEncoder;
     private final UserService userService;
+    private final SecretKey secretKey;
+    private final JwtConfig jwtConfig;
+
 
     @Autowired
-    public SecurityConfig(PasswordEncoder passwordEncoder, UserService userService) {
+    public SecurityConfig(PasswordEncoder passwordEncoder, UserService userService, SecretKey secretKey, JwtConfig jwtConfig) {
         this.passwordEncoder = passwordEncoder;
         this.userService = userService;
+        this.secretKey = secretKey;
+        this.jwtConfig = jwtConfig;
     }
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         http
-                .csrf().disable() // disable csrf
+                .csrf().disable()
+                .sessionManagement()
+                    .sessionCreationPolicy(SessionCreationPolicy.STATELESS) // define stateless policy
+                .and()
+                .addFilter(new JwtUsernameAndPasswordAuthenticationFilter(authenticationManager(), jwtConfig, secretKey)) // add filter
+                .addFilterAfter(new JwtTokenVerifier(secretKey, jwtConfig), JwtUsernameAndPasswordAuthenticationFilter.class)
                 .authorizeRequests()
                 .antMatchers("/", "/index", "/css/*", "/js/*").permitAll()
                 .antMatchers("/api/**").hasRole(STUDENT.name()) // allow only students to access student resources
                 .anyRequest() //-> any path
-                .authenticated()
-                .and()
-                .formLogin() //  -> for form-based auth
-                    .loginPage("/login")
-                    .permitAll() // custom login page
-                    .defaultSuccessUrl("/courses", true) // redirect after successful login
-                    .usernameParameter("username") // default value => username, can be customized
-                    .passwordParameter("password") // default value => password, can be customized
-                .and()
-                .rememberMe() // defaults to 2 weeks; remember-me cookie, also stored in the database
-                    .tokenValiditySeconds((int) TimeUnit.DAYS.toSeconds(21)) // set expiration time frame
-                    .key("somethingverysecure") // custom key used to hash with MD5
-                    .rememberMeParameter("remember-me") // default value => remember-me, can be customized
-                .and()
-                .logout()
-                    .logoutUrl("/logout") // default url is /logout
-                    .logoutRequestMatcher(new AntPathRequestMatcher("/logout", "GET")) // this happens
-                    // under the hood when CSRF protection is disabled. If it is enabled, this line should be remove
-                    .clearAuthentication(true) // clear auth
-                    .invalidateHttpSession(true) // invalidate session
-                    .deleteCookies("JSESSIONID", "remember-me") // delete session cookies
-                    .logoutSuccessUrl("/login");
-
-
-
+                .authenticated();
     }
 
     @Override
